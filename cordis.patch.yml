@@ -9,4 +9,4 @@
 # package.json makes the browser half (exports "./client") load in the web GUI.
 - insert:
     - id: knowledge-base
-      name: '@linxin666/dsh-knowledge-base'
+      name: '@zy-ultimately/dsh-knowledge-base'

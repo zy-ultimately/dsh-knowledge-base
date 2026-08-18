@@ -1,5 +1,5 @@
 {
-  "name": "@linxin666/dsh-knowledge-base",
+  "name": "@zy-ultimately/dsh-knowledge-base",
   "description": "Global knowledge base for the dsh web GUI: upload PDF/Word/Excel/PPT/TXT/MD/CSV/HTML documents, pure-JS text extraction + BM25 keyword index persisted to disk, a right-edge management panel, automatic retrieval injected into every session (agent/pre-step) plus a knowledge_base_search model tool, and source citations. Zero native/vector dependencies; embedding backend can be layered on later.",
   "version": "0.1.0",
   "type": "module",
@@ -66,6 +66,10 @@
     "README.md"
   ],
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zy-ultimately/dsh-knowledge-base.git"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && tsdown",
     "bundle": "tsdown",
