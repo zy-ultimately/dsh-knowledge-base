@@ -41,13 +41,3 @@ dsh plugin --profile web add github:zy-ultimately/dsh-knowledge-base
 
 - 插件可随时整体关闭，不影响 DSH 的聊天功能。
 - 所有解析与检索均在本机进行，隐私无忧。
-
-## 附：删减内容清单
-
-本次面向大众精简时删除的内容：
-
-- 目录结构（源码文件列表）
-- 动态 / 静态插件的技术安装区分，合并为一步安装
-- 配置项 YAML、数据文件格式、BM25 检索原理等开发细节
-- 验收测试点、引擎单测等工程内容
-- 硬核术语：依赖注入、profile、bundle patch、loopback、topK、minScore、chunkSize、CJK 二元组、混合检索等
