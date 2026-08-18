@@ -1,0 +1,311 @@
+/* Knowledge-base panel — centered modal, DSW-token themed (mirrors the
+   settings dialog style). Class names are CSS-module camelCase; the panel is
+   rendered by KbOverlay.tsx into shell.overlay. */
+
+.dshKbOverlay {
+  z-index: 1000;
+  justify-content: center;
+  align-items: center;
+  display: flex;
+  position: fixed;
+  inset: 0;
+}
+
+.dshKbMask {
+  background: var(--dsw-alias-bg-mask-1);
+  backdrop-filter: var(--dsw-mask-blur);
+  position: absolute;
+  inset: 0;
+}
+
+.dshKbPanel {
+  z-index: 1;
+  background: var(--dsw-alias-bg-layer-2);
+  width: 760px;
+  max-width: calc(100vw - 48px);
+  height: min(720px, 100vh - 48px);
+  box-shadow: var(--dsw-shadow-lv3);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family);
+}
+
+.dshKbHeader {
+  box-sizing: border-box;
+  flex: none;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  height: 54px;
+  padding: 20px 14px 8px 10px;
+  display: flex;
+}
+
+.dshKbTitle {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dshKbCount {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  font-weight: 400;
+}
+
+.dshKbClose {
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  color: var(--dsw-alias-label-primary);
+  background: 0 0;
+  border: none;
+  border-radius: 28px;
+  justify-content: center;
+  align-items: center;
+  padding: 0;
+  display: inline-flex;
+}
+
+.dshKbClose:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dshKbBody {
+  flex: 1;
+  min-height: 0;
+  padding: 0 24px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dshKbUpload {
+  border: 1.5px dashed var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  padding: 14px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--dsw-alias-label-secondary);
+  transition: all 0.15s;
+}
+
+.dshKbUpload:hover {
+  border-color: var(--dsw-alias-accent);
+  color: var(--dsw-alias-accent);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dshKbUploadBusy {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.dshKbUploadHint {
+  font-size: 11px;
+  margin-top: 4px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dshKbNotice {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-accent-soft);
+  color: var(--dsw-alias-accent);
+}
+
+.dshKbNoticeErr {
+  background: var(--dsw-alias-danger-soft);
+  color: var(--dsw-alias-danger);
+}
+
+.dshKbDoc {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dshKbDocTop {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dshKbDocName {
+  flex: 1;
+  font-weight: 500;
+  word-break: break-all;
+  line-height: 1.25;
+}
+
+.dshKbDocMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  flex-wrap: wrap;
+}
+
+.dshKbChip {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 9px;
+  white-space: nowrap;
+}
+
+.dshKbChipReady {
+  background: var(--dsw-alias-success-soft);
+  color: var(--dsw-alias-success);
+}
+
+.dshKbChipParsing {
+  background: var(--dsw-alias-warning-soft);
+  color: var(--dsw-alias-warning);
+}
+
+.dshKbChipError {
+  background: var(--dsw-alias-danger-soft);
+  color: var(--dsw-alias-danger);
+}
+
+.dshKbErrmsg {
+  font-size: 11px;
+  color: var(--dsw-alias-danger);
+  word-break: break-all;
+}
+
+.dshKbActions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.dshKbBtn {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+}
+
+.dshKbBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dshKbBtnDanger:hover {
+  background: var(--dsw-alias-danger-soft);
+  border-color: var(--dsw-alias-danger);
+  color: var(--dsw-alias-danger);
+}
+
+.dshKbBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dshKbCfg {
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dshKbCfgRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.dshKbCfgRow label {
+  flex: 1;
+}
+
+.dshKbInput {
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  width: 74px;
+}
+
+.dshKbToggle {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  flex: none;
+}
+
+.dshKbToggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.dshKbToggle span {
+  position: absolute;
+  inset: 0;
+  background: var(--dsw-alias-border-l3);
+  border-radius: 9px;
+  transition: 0.15s;
+  cursor: pointer;
+}
+
+.dshKbToggle span:before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 2px;
+  top: 2px;
+  background: var(--dsw-alias-bg-base);
+  border-radius: 50%;
+  transition: 0.15s;
+}
+
+.dshKbToggle input:checked + span {
+  background: var(--dsw-alias-accent);
+}
+
+.dshKbToggle input:checked + span:before {
+  transform: translateX(16px);
+}
+
+.dshKbFooter {
+  padding: 8px 14px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.dshKbEmpty {
+  text-align: center;
+  color: var(--dsw-alias-label-tertiary);
+  padding: 18px 8px;
+  font-size: 12px;
+}

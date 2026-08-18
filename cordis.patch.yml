@@ -1,0 +1,12 @@
+# dsh-knowledge-base bundle patch: inserts the dual-face plugin row into the
+# web profile roster. Applied as a profile bundle layer (the `dsh.bundle.patch`
+# manifest field) over dsh-base; activate with
+#   dsh plugin --profile <name> add link:<path-to-this-package>
+#
+# The row is a bare plugin by package name: the node half (exports ".") runs
+# in the host process (KB engine, /api/dsh-kb routes, agent tools, the
+# agent/pre-step retrieval hook), and the `dsh.client` declaration in
+# package.json makes the browser half (exports "./client") load in the web GUI.
+- insert:
+    - id: knowledge-base
+      name: '@linxin666/dsh-knowledge-base'

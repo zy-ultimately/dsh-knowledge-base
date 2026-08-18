@@ -1,0 +1,77 @@
+{
+  "name": "@linxin666/dsh-knowledge-base",
+  "description": "Global knowledge base for the dsh web GUI: upload PDF/Word/Excel/PPT/TXT/MD/CSV/HTML documents, pure-JS text extraction + BM25 keyword index persisted to disk, a right-edge management panel, automatic retrieval injected into every session (agent/pre-step) plus a knowledge_base_search model tool, and source citations. Zero native/vector dependencies; embedding backend can be layered on later.",
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-sandbox-policy": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-system-prompt": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
+    "@types/node": "^22.20.0",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "^18.3.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "schemastery": "^3.18.0",
+    "tsdown": "0.22.2",
+    "typescript": "~5.7.2",
+    "vitest": "^3.0.0"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.js.map",
+    "lib/**/*.d.ts",
+    "lib/**/*.d.ts.map",
+    "src",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsdown",
+    "bundle": "tsdown",
+    "watch": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  }
+}
