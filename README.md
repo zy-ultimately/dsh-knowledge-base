@@ -5,16 +5,6 @@
 
 ## 安装
 
-**在 DSH 插件设置中添加**（推荐）：
-
-1. 打开 DSH → 插件设置 → 添加插件
-2. 填入仓库地址：`zy-ultimately/dsh-knowledge-base`
-3. 重启 DSH
-
-重启后，左侧边栏出现「知识库」入口。
-
-**命令行方式**（可选）：
-
 ```bash
 dsh plugin --profile web add github:zy-ultimately/dsh-knowledge-base
 ```
