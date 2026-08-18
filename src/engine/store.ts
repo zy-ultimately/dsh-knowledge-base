@@ -165,10 +165,13 @@ export class KbStore {
     return base64ToBytes(text)
   }
 
-  /** Release a removed document's raw file (empty overwrite; fs has no unlink). */
+  /** Release a removed document's raw file (really delete it; the sandboxed fs service has no unlink, so use Node rm on the resolved targetKey). */
   async clearRaw(doc: Pick<KbDoc, 'id' | 'ext'>): Promise<void> {
     try {
-      await this.fs.writeText(await this.fs.resolve(joinPath(this.root, 'raw', `${doc.id}.${doc.ext}.b64`)), '', undefined, undefined, this.writePolicy)
+      const target = await this.fs.resolve(joinPath(this.root, 'raw', `${doc.id}.${doc.ext}.b64`))
+      const key = typeof target === 'object' && target !== null && 'targetKey' in target ? (target as { targetKey: string }).targetKey : target
+      const { rmSync } = await import('node:fs')
+      rmSync(String(key), { force: true })
     } catch {
       // non-fatal
     }

@@ -177,7 +177,7 @@ export function KbOverlay({ api }: KbOverlayProps): React.ReactElement {
           const l = await api.list()
           setDocs(l.docs || [])
           if (l.config) setConfig(l.config)
-          setNotice((prev) => (prev.includes('正在解析') ? '' : prev))
+          setNotice((prev) => (/正在(?:重新)?解析/.test(prev) ? '' : prev))
         }
       } catch { /* ignore */ }
     }, 1200)

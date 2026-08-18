@@ -211,3 +211,23 @@ export function inflateRaw(input: Uint8Array): Uint8Array {
   }
   return out.finish()
 }
+
+/**
+ * Inflate a PDF FlateDecode stream. Per the PDF spec /FlateDecode is a zlib
+ * wrapper (RFC1950): 2-byte header (CMF/FLG) + deflate data. Some generators
+ * emit bare raw deflate though. Auto-detect: when the header bytes look like
+ * zlib, skip the 2 bytes; if that raw inflate fails (i.e. it was actually
+ * bare deflate), fall back to inflating the whole input.
+ */
+export function inflateAuto(input: Uint8Array): Uint8Array {
+  if (!(input instanceof Uint8Array)) throw new Error('inflate: expected Uint8Array')
+  const zlibHeader =
+    input.length >= 2 &&
+    (input[0]! & 0x0f) === 8 &&
+    ((input[0]! << 8) | input[1]!) % 31 === 0
+  if (zlibHeader) {
+    try { return inflateRaw(input.subarray(2)) }
+    catch { /* not zlib-wrapped; fall back to raw */ }
+  }
+  return inflateRaw(input)
+}

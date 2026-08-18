@@ -4,7 +4,7 @@
  * position ("第 3 页" / "段落 12" / "工作表 1" / "幻灯片 2" / "第 N 行" / "正文").
  * Ported 1:1 from the unit-tested implementation (23/23 assertions).
  */
-import { inflateRaw } from './inflate.ts'
+import { inflateRaw, inflateAuto } from './inflate.ts'
 import { extractAll, extractMatching, requireZip } from './zip.ts'
 
 export interface TextSection {
@@ -240,12 +240,57 @@ function decodePdfStringRaw(raw: string): string {
   return raw // PDFDocEncoding ≈ latin1
 }
 
-function extractPdfText(streamBytes: Uint8Array): string {
+/** Parse a ToUnicode CMap (CID → Unicode). Input is the decompressed CMap text; supports bfchar (1:1) and bfrange (numeric / array). */
+function parseToUnicodeCMap(text: string): Map<number, string> {
+  const map = new Map<number, string>()
+  const bfcharRe = /(\d+)\s+beginbfchar([\s\S]*?)endbfchar/g
+  let m: RegExpExecArray | null
+  while ((m = bfcharRe.exec(text)) !== null) {
+    const block = m[2]!
+    const pairRe = /<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>/g
+    let p: RegExpExecArray | null
+    while ((p = pairRe.exec(block)) !== null) {
+      map.set(parseInt(p[1]!, 16), String.fromCodePoint(parseInt(p[2]!, 16)))
+    }
+  }
+  const bfrangeArrRe = /(\d+)\s+beginbfrange([\s\S]*?)endbfrange/g
+  while ((m = bfrangeArrRe.exec(text)) !== null) {
+    const block = m[2]!
+    const arrRe = /<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>\s*\[([\s\S]*?)\]/g
+    let a: RegExpExecArray | null
+    while ((a = arrRe.exec(block)) !== null) {
+      const lo = parseInt(a[1]!, 16)
+      const hi = parseInt(a[2]!, 16)
+      const dsts = a[3]!.match(/<([0-9a-fA-F]+)>/g) || []
+      for (let i = 0; i <= hi - lo && i < dsts.length; i++) {
+        map.set(lo + i, String.fromCodePoint(parseInt(dsts[i]!.slice(1, -1), 16)))
+      }
+    }
+    const numRe = /<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>(?!\s*\[)/g
+    let n: RegExpExecArray | null
+    while ((n = numRe.exec(block)) !== null) {
+      const lo = parseInt(n[1]!, 16)
+      const hi = parseInt(n[2]!, 16)
+      let dst = parseInt(n[3]!, 16)
+      for (let c = lo; c <= hi; c++) { map.set(c, String.fromCodePoint(dst)); dst++ }
+    }
+  }
+  return map
+}
+
+/**
+ * fontMaps: { resourceName: Map<cid, unicode> } — built by the caller from each
+ * page's Resources. The content stream switches fonts via `/FT8 209 Tf`; hex
+ * strings are decoded with the current font's CID map.
+ */
+function extractPdfText(streamBytes: Uint8Array, fontMaps?: Record<string, Map<number, string>>): string {
   const s = latin1(streamBytes)
   const n = s.length
   let out = ''
   let i = 0
   let pending = ''
+  let currentFont = ''
+  let lastResName = ''
   const isAlpha = (cc: number): boolean => (cc >= 65 && cc <= 90) || (cc >= 97 && cc <= 122)
   const isOpChar = (cc: number): boolean => (cc >= 65 && cc <= 90) || (cc >= 97 && cc <= 122) || cc === 42 || cc === 39 || cc === 34
   const isDigit7 = (cc: number): boolean => cc >= 48 && cc <= 55
@@ -296,17 +341,62 @@ function extractPdfText(streamBytes: Uint8Array): string {
       i++
       const bytes2 = new Uint8Array(Math.floor(hex.length / 2))
       for (let k = 0; k < bytes2.length; k++) bytes2[k] = parseInt(hex.slice(k * 2, k * 2 + 2), 16)
-      let hs = ''
-      for (let k = 0; k < bytes2.length; k++) hs += String.fromCharCode(bytes2[k]!)
-      pending += decodePdfStringRaw(hs)
+      const cmap = currentFont && fontMaps ? fontMaps[currentFont] : undefined
+      if (cmap && bytes2.length > 0) {
+        // CID font: every 2 bytes is one CID, resolved through the ToUnicode map
+        let hs = ''
+        for (let k = 0; k + 1 < bytes2.length; k += 2) {
+          const cid = (bytes2[k]! << 8) | bytes2[k + 1]!
+          const ch = cmap.get(cid)
+          hs += ch !== undefined ? ch : String.fromCharCode(cid)
+        }
+        if (bytes2.length % 2 === 1) hs += String.fromCharCode(bytes2[bytes2.length - 1]!)
+        pending += hs
+      } else {
+        let hs = ''
+        for (let k = 0; k < bytes2.length; k++) hs += String.fromCharCode(bytes2[k]!)
+        pending += decodePdfStringRaw(hs)
+      }
+    } else if (cc === 47) { // '/' resource name (e.g. /FT8)
+      lastResName = ''
+      i++
+      while (i < n && (/[A-Za-z0-9._-]/.test(s[i]!))) { lastResName += s[i]; i++ }
     } else if (isAlpha(cc)) { // operator
       let op = ''
       while (i < n && isOpChar(s.charCodeAt(i))) { op += s[i]; i++ }
-      if (op === 'Tj' || op === "'" || op === 'TJ' || op === 'Td' || op === 'TD' || op === 'T*' || op === 'ET') flush()
+      if (op === 'Tf' && lastResName) currentFont = lastResName
+      // Tj/TJ/'/Td/TD are position moves or inline text: only accumulate, do not
+      // flush (compatible with per-glyph WPS PDFs — one Tj+TD per character;
+      // flushing per glyph would split text into single-character lines).
+      // Flush only at text-block boundaries T*/ET (and BT) for whole paragraphs.
+      else if (op === 'T*' || op === 'ET' || op === 'BT') flush()
     } else i++
   }
   if (pending) { const t = pending.trimEnd(); if (t) out += t }
   return cleanText(out)
+}
+
+/** Collect `N 0 obj\n<number>\nendobj` simple objects (for indirect /Length resolution). */
+function collectObjectLengths(s: string): Map<number, number> {
+  const map = new Map<number, number>()
+  const re = /(\d+)\s+\d+\s+obj\s*\n\s*(\d+)\s*\n\s*endobj/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(s)) !== null) map.set(parseInt(m[1]!, 10), parseInt(m[2]!, 10))
+  return map
+}
+
+/** Match a balanced `<<...>>` dictionary from the opening position (nested-safe). */
+function matchDict(s: string, openAt: number): { dict: string; closeAfter: number } | null {
+  let i = openAt + 2
+  let depth = 1
+  const start = i
+  while (i < s.length && depth > 0) {
+    if (s[i] === '<' && s[i + 1] === '<') { depth++; i += 2 }
+    else if (s[i] === '>' && s[i + 1] === '>') { depth--; i += 2 }
+    else i++
+  }
+  if (depth !== 0) return null
+  return { dict: s.slice(start, i - 2), closeAfter: i }
 }
 
 export function parsePdf(bytes: Uint8Array): TextSection[] {
@@ -315,49 +405,153 @@ export function parsePdf(bytes: Uint8Array): TextSection[] {
   const tail = latin1(bytes.subarray(Math.max(0, bytes.length - 4096)))
   if (/\/Encrypt\s+\d+\s+\d+\s+R/.test(tail)) throw new Error('PDF 已加密，无法解析')
   const s = latin1(bytes)
-  const sections: TextSection[] = []
-  let pageNo = 0
-  // Locate streams by object (`N 0 obj <<dict>> stream\n <body> endstream`) and slice
-  // by /Length when present — compressed bytes can contain the literal "endstream"
-  // sequence, and regex-based truncation used to feed a partial deflate stream into
-  // the inflater (which now throws on exhausted input instead of hanging).
-  const objRe = /(\d+)\s+\d+\s+obj\s*<<([\s\S]*?)>>\s*stream\r?\n/g
+
+  // Pass 1: scan every object (dict + optional stream) into Map<objNum, {dict, body}>
+  const objects = new Map<number, { dict: string; body: Uint8Array | null }>()
+  const objRe = /(\d+)\s+\d+\s+obj\b/g
   let m: RegExpExecArray | null
   while ((m = objRe.exec(s)) !== null) {
-    const dict = m[2] ?? ''
-    if (dict.includes('/Image') || dict.includes('/DCTDecode') || dict.includes('/JPXDecode') || dict.includes('/LZWDecode')) continue
-    const hasFlate = /\/FlateDecode|\/Fl\b/.test(dict)
-    const hasAsciiHex = /\/ASCIIHexDecode|\/AHx\b/.test(dict)
-    const start = objRe.lastIndex // data start (right after 'stream\n')
-    let end: number
-    const indirectLen = /\/Length\s+\d+\s+\d+\s+R/.test(dict)
-    const directLen = /\/Length\s+(\d+)\b/.exec(dict)
-    if (!indirectLen && directLen !== null) {
-      end = Math.min(start + parseInt(directLen[1]!, 10), s.length)
-    } else {
-      const es = s.indexOf('endstream', start)
-      end = es === -1 ? s.length : es
-      while (end > start && (s.charCodeAt(end - 1) === 10 || s.charCodeAt(end - 1) === 13)) end--
+    const objNum = parseInt(m[1]!, 10)
+    const dictOpen = s.indexOf('<<', objRe.lastIndex)
+    if (dictOpen === -1) continue
+    const between = s.slice(objRe.lastIndex, dictOpen)
+    if (!/^\s*$/.test(between)) continue // only whitespace between obj and <<
+    const dm = matchDict(s, dictOpen)
+    if (dm === null) continue
+    const dict = dm.dict
+    let afterDict = dm.closeAfter
+    while (afterDict < s.length && (s[afterDict] === ' ' || s[afterDict] === '\r' || s[afterDict] === '\n' || s[afterDict] === '\t')) afterDict++
+    let body: Uint8Array | null = null
+    if (s.startsWith('stream', afterDict)) {
+      let dataStart = afterDict + 6
+      if (s[dataStart] === '\r') dataStart++
+      if (s[dataStart] === '\n') dataStart++
+      let end: number
+      const indirectLen = /\/Length\s+(\d+)\s+\d+\s+R/.exec(dict)
+      if (indirectLen !== null) {
+        const v = collectObjectLengths(s).get(parseInt(indirectLen[1]!, 10))
+        end = v !== undefined ? Math.min(dataStart + v, s.length) : s.indexOf('endstream', dataStart)
+      } else {
+        const directLen = /\/Length\s+(\d+)\b/.exec(dict)
+        end = directLen !== null ? Math.min(dataStart + parseInt(directLen[1]!, 10), s.length) : s.indexOf('endstream', dataStart)
+      }
+      if (end === -1) end = s.length
+      while (end > dataStart && (s.charCodeAt(end - 1) === 10 || s.charCodeAt(end - 1) === 13)) end--
+      const bodyStr = s.slice(dataStart, end)
+      body = new Uint8Array(bodyStr.length)
+      for (let k = 0; k < bodyStr.length; k++) body[k] = bodyStr.charCodeAt(k) & 0xff
+      const endstreamAt = s.indexOf('endstream', end)
+      objRe.lastIndex = endstreamAt === -1 ? end + 9 : endstreamAt + 9
     }
-    const body = s.slice(start, end)
-    objRe.lastIndex = end
-    const bodyBytes = new Uint8Array(body.length)
-    for (let k = 0; k < body.length; k++) bodyBytes[k] = body.charCodeAt(k) & 0xff
+    objects.set(objNum, { dict, body })
+  }
+
+  // Stream decoding: Flate (zlib or raw, auto-detected) / ASCIIHex / passthrough
+  const decodeStream = (obj: { dict: string; body: Uint8Array | null } | undefined): Uint8Array | null => {
+    if (!obj || !obj.body) return null
+    if (obj.dict.includes('/Image') || obj.dict.includes('/DCTDecode') || obj.dict.includes('/JPXDecode') || obj.dict.includes('/LZWDecode')) return null
+    const hasFlate = /\/FlateDecode|\/Fl\b/.test(obj.dict)
+    const hasAsciiHex = /\/ASCIIHexDecode|\/AHx\b/.test(obj.dict)
     let raw: Uint8Array
     if (hasFlate) {
-      try { raw = inflateRaw(bodyBytes) } catch { continue } // undecompressible stream: skip, not fatal
+      try { raw = inflateAuto(obj.body) } catch { return null } // undecompressible stream: skip, not fatal
     } else if (hasAsciiHex) {
       let hex = ''
-      for (let k = 0; k < bodyBytes.length; k++) {
-        const ch = String.fromCharCode(bodyBytes[k]!)
+      for (let k = 0; k < obj.body.length; k++) {
+        const ch = String.fromCharCode(obj.body[k]!)
         if (ch === '>') break
         if (ch.trim()) hex += ch
       }
       raw = new Uint8Array(Math.floor(hex.length / 2))
       for (let k = 0; k < raw.length; k++) raw[k] = parseInt(hex.slice(k * 2, k * 2 + 2), 16)
-    } else raw = bodyBytes
-    const text = extractPdfText(raw)
-    if (text.length > 0) { pageNo++; sections.push({ loc: `第 ${pageNo} 页`, text }) }
+    } else raw = obj.body
+    return raw
+  }
+
+  // Font objects (/Subtype /Type0 + /ToUnicode) → CID maps
+  const cidMaps = new Map<number, Map<number, string>>() // fontObjNum -> Map<cid, unicode>
+  for (const [num, obj] of objects) {
+    if (!obj.dict) continue
+    const toUniM = /\/ToUnicode\s+(\d+)\s+0\s+R/.exec(obj.dict)
+    if (toUniM === null) continue
+    const cmapObj = objects.get(parseInt(toUniM[1]!, 10))
+    if (!cmapObj || !cmapObj.body) continue
+    const raw = decodeStream(cmapObj)
+    if (!raw) continue
+    cidMaps.set(num, parseToUnicodeCMap(latin1(raw)))
+  }
+
+  // Page objects: /Type /Page + /Resources /Font (name→fontObj) + /Contents
+  const pages: Array<{ fonts: Record<string, number>; contents: number[] }> = []
+  for (const [num, obj] of objects) {
+    if (!obj.dict) continue
+    if (!/\/Type\s*\/Page\b/.test(obj.dict)) continue
+    if (/\/Type\s*\/Pages\b/.test(obj.dict)) continue
+    const fonts: Record<string, number> = {}
+    // Depth-match /Resources << ... >> (may nest ExtGState/Font dicts)
+    const resIdx = obj.dict.indexOf('/Resources')
+    if (resIdx !== -1) {
+      const resDictOpen = obj.dict.indexOf('<<', resIdx)
+      if (resDictOpen !== -1) {
+        const resDm = matchDict(obj.dict, resDictOpen)
+        if (resDm !== null) {
+          const fontIdx = resDm.dict.indexOf('/Font')
+          if (fontIdx !== -1) {
+            const fontDictOpen = resDm.dict.indexOf('<<', fontIdx)
+            if (fontDictOpen !== -1) {
+              const fontDm = matchDict(resDm.dict, fontDictOpen)
+              if (fontDm !== null) {
+                const fRe = /\/([A-Za-z0-9._-]+)\s+(\d+)\s+0\s+R/g
+                let fm: RegExpExecArray | null
+                while ((fm = fRe.exec(fontDm.dict)) !== null) {
+                  fonts[fm[1]!] = parseInt(fm[2]!, 10)
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    const contents: number[] = []
+    const singleM = /\/Contents\s+(\d+)\s+0\s+R/.exec(obj.dict)
+    const arrM = /\/Contents\s*\[([\s\S]*?)\]/.exec(obj.dict)
+    if (singleM !== null) contents.push(parseInt(singleM[1]!, 10))
+    if (arrM !== null) {
+      const numRe = /(\d+)\s+0\s+R/g
+      let nm: RegExpExecArray | null
+      while ((nm = numRe.exec(arrM[1]!)) !== null) contents.push(parseInt(nm[1]!, 10))
+    }
+    pages.push({ fonts, contents })
+  }
+
+  const sections: TextSection[] = []
+  let pageNo = 0
+  for (const page of pages) {
+    const fontMaps: Record<string, Map<number, string>> = {}
+    for (const [resName, fontObjNum] of Object.entries(page.fonts)) {
+      const cidMap = cidMaps.get(fontObjNum)
+      if (cidMap !== undefined) fontMaps[resName] = cidMap
+    }
+    let pageText = ''
+    for (const contentObjNum of page.contents) {
+      const obj = objects.get(contentObjNum)
+      const raw = decodeStream(obj)
+      if (!raw) continue
+      pageText += extractPdfText(raw, fontMaps)
+    }
+    if (pageText.trim()) { pageNo++; sections.push({ loc: `第 ${pageNo} 页`, text: pageText }) }
+  }
+
+  // Fallback: no page objects — scan all non-font/image streams (odd structures)
+  if (sections.length === 0) {
+    for (const [num, obj] of objects) {
+      if (!obj || !obj.body) continue
+      if (obj.dict.includes('/Image') || obj.dict.includes('/FontFile') || obj.dict.includes('/Length1')) continue
+      const raw = decodeStream(obj)
+      if (!raw) continue
+      const text = extractPdfText(raw)
+      if (text.trim()) { pageNo++; sections.push({ loc: `第 ${pageNo} 页`, text }) }
+    }
   }
   if (sections.length === 0) throw new Error('未从 PDF 提取到文本（可能是扫描件/图片型 PDF，或无文本层）')
   return sections
