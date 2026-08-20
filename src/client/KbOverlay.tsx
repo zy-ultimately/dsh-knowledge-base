@@ -67,13 +67,11 @@ function DocRow({ doc, onDelete, onReparse }: { doc: KbDocView; onDelete: (doc: 
 }
 
 function ConfigSection({ config, onApply }: { config: KbConfigView | null; onApply: (patch: Partial<KbConfigView>) => void }): React.ReactElement {
-  const [enabled, setEnabled] = useState(config?.enabled ?? true)
   const [topK, setTopK] = useState(config?.topK ?? 4)
   const [minScore, setMinScore] = useState(config?.minScore ?? 0.5)
   const [dir, setDir] = useState(config?.storageDir ?? '')
   useEffect(() => {
     if (config) {
-      setEnabled(config.enabled)
       setTopK(config.topK)
       setMinScore(config.minScore)
       setDir(config.storageDir ?? '')
@@ -81,13 +79,6 @@ function ConfigSection({ config, onApply }: { config: KbConfigView | null; onApp
   }, [config])
   return (
     <div className={styles.dshKbCfg}>
-      <div className={styles.dshKbCfgRow}>
-        <label>自动检索（任意会话注入相关片段）</label>
-        <label className={styles.dshKbToggle}>
-          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          <span />
-        </label>
-      </div>
       <div className={styles.dshKbCfgRow}>
         <label>注入片段数 topK</label>
         <select className={styles.dshKbInput} value={topK} onChange={(e) => setTopK(Number(e.target.value))}>
@@ -103,7 +94,7 @@ function ConfigSection({ config, onApply }: { config: KbConfigView | null; onApp
         <input className={styles.dshKbInput} style={{ width: 150 }} value={dir} placeholder="工作区默认" onChange={(e) => setDir(e.target.value)} />
       </div>
       <div>
-        <button className={styles.dshKbBtn} onClick={() => onApply({ enabled, topK, minScore, storageDir: dir.trim() })}>保存配置</button>
+        <button className={styles.dshKbBtn} onClick={() => onApply({ topK, minScore, storageDir: dir.trim() })}>保存配置</button>
       </div>
     </div>
   )
@@ -245,6 +236,19 @@ export function KbOverlay({ api }: KbOverlayProps): React.ReactElement {
     }
   }
 
+  /** Master switch: toggling 启用知识库 persists immediately and gates retrieval/tool/upload. */
+  const onToggleEnabled = async (next: boolean): Promise<void> => {
+    const res = await api.setConfig({ enabled: next })
+    if (res && res.ok) {
+      setConfig(res.config)
+      flash(next ? '知识库已启用' : '知识库已停用')
+    } else {
+      flash(`切换失败：${(res as unknown as { error?: string }).error || '未知错误'}`, true)
+    }
+  }
+
+  const enabled = config?.enabled ?? true
+
   return (
     <>
       {open && (
@@ -256,11 +260,26 @@ export function KbOverlay({ api }: KbOverlayProps): React.ReactElement {
                 全局知识库
                 <span className={styles.dshKbCount}>{stats.total} 个文档 · {stats.chunks} 个片段</span>
               </span>
-              <button className={styles.dshKbClose} onClick={() => setOpen(false)} title="收起" aria-label="关闭">✕</button>
+              <span className={styles.dshKbHeaderRight}>
+                <label className={styles.dshKbMaster}>
+                  <span className={styles.dshKbMasterLabel}>{enabled ? '已启用' : '已停用'}</span>
+                  <span className={styles.dshKbToggle}>
+                    <input type="checkbox" checked={enabled} onChange={(e) => void onToggleEnabled(e.target.checked)} />
+                    <span />
+                  </span>
+                </label>
+                <button className={styles.dshKbClose} onClick={() => setOpen(false)} title="收起" aria-label="关闭">✕</button>
+              </span>
             </div>
             <div className={styles.dshKbBody}>
-              <div className={`${styles.dshKbUpload} ${busy ? styles.dshKbUploadBusy : ''}`} onClick={() => inputRef.current?.click()}>
-                <div>{busy ? '上传中…' : '上传文档'}</div>
+              {!enabled && (
+                <div className={styles.dshKbDisabled}>知识库已停用：自动检索与搜索工具已关闭，上传文档需先启用。</div>
+              )}
+              <div
+                className={`${styles.dshKbUpload} ${busy ? styles.dshKbUploadBusy : ''} ${!enabled ? styles.dshKbUploadDisabled : ''}`}
+                onClick={() => { if (enabled) inputRef.current?.click(); else flash('请先启用知识库', true) }}
+              >
+                <div>{busy ? '上传中…' : enabled ? '上传文档' : '已停用 · 点击启用后上传'}</div>
                 <div className={styles.dshKbUploadHint}>支持 PDF / Word / Excel / PPT / TXT / MD / CSV / HTML，单文件 ≤ 20MB，可多选</div>
                 <input
                   ref={inputRef}

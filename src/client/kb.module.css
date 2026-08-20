@@ -63,6 +63,44 @@
   font-weight: 400;
 }
 
+.dshKbHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dshKbMaster {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dshKbMasterLabel {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dshKbDisabled {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-warning-soft);
+  color: var(--dsw-alias-warning);
+}
+
+.dshKbUploadDisabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dshKbUploadDisabled:hover {
+  border-color: var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+}
+
 .dshKbClose {
   cursor: pointer;
   width: 28px;
